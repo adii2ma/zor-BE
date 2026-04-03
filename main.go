@@ -1,12 +1,15 @@
 package main
 
 import (
+	"context"
 	"log"
+	"time"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/middleware/cors"
 
 	"be-zor/internal/config"
+	"be-zor/internal/database"
 	"be-zor/internal/googleauth"
 	"be-zor/internal/handlers"
 	"be-zor/internal/middleware"
@@ -15,6 +18,18 @@ import (
 
 func main() {
 	cfg := config.Load()
+	db, err := database.Open(cfg)
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer db.Close()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+
+	if err := database.ApplySchema(ctx, db); err != nil {
+		log.Fatal(err)
+	}
 
 	app := fiber.New()
 	app.Use(cors.New(cors.Config{
@@ -23,9 +38,9 @@ func main() {
 		AllowMethods: "GET,POST,OPTIONS",
 	}))
 
-	memoryStore := store.NewMemoryStore(cfg.SessionTTL)
+	bunStore := store.NewBunStore(db, cfg.SessionTTL)
 	verifier := googleauth.NewVerifier(cfg.GoogleClientID)
-	authHandler := handlers.NewAuthHandler(verifier, memoryStore)
+	authHandler := handlers.NewAuthHandler(verifier, bunStore)
 
 	app.Get("/", func(c *fiber.Ctx) error {
 		return c.JSON(fiber.Map{
@@ -38,7 +53,7 @@ func main() {
 	api.Post("/auth/google/signup", authHandler.GoogleSignup)
 	api.Post("/auth/google/signin", authHandler.GoogleSignup)
 
-	protected := api.Group("", middleware.RequireAuth(memoryStore))
+	protected := api.Group("", middleware.RequireAuth(bunStore))
 	protected.Get("/me", authHandler.Me)
 
 	log.Fatal(app.Listen(":" + cfg.Port))

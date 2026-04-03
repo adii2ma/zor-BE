@@ -1,8 +1,6 @@
 package handlers
 
 import (
-	"errors"
-
 	"github.com/gofiber/fiber/v2"
 
 	"be-zor/internal/googleauth"
@@ -12,13 +10,13 @@ import (
 
 type AuthHandler struct {
 	verifier *googleauth.Verifier
-	store    *store.MemoryStore
+	store    *store.BunStore
 }
 
-func NewAuthHandler(verifier *googleauth.Verifier, memoryStore *store.MemoryStore) *AuthHandler {
+func NewAuthHandler(verifier *googleauth.Verifier, bunStore *store.BunStore) *AuthHandler {
 	return &AuthHandler{
 		verifier: verifier,
-		store:    memoryStore,
+		store:    bunStore,
 	}
 }
 
@@ -43,8 +41,19 @@ func (h *AuthHandler) GoogleSignup(c *fiber.Ctx) error {
 		})
 	}
 
-	user := h.store.UpsertGoogleUser(identity)
-	session, err := h.store.CreateSession(user.ID, c.Get("User-Agent"), c.IP())
+	user, err := h.store.UpsertGoogleUser(c.Context(), identity)
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"error": "failed to persist user",
+		})
+	}
+
+	session, sessionToken, err := h.store.CreateSession(
+		c.Context(),
+		user.ID,
+		c.Get("User-Agent"),
+		c.IP(),
+	)
 	if err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 			"error": "failed to create session",
@@ -52,7 +61,7 @@ func (h *AuthHandler) GoogleSignup(c *fiber.Ctx) error {
 	}
 
 	return c.Status(fiber.StatusCreated).JSON(models.AuthResponse{
-		SessionToken: session.Token,
+		SessionToken: sessionToken,
 		Session:      session,
 		User:         user,
 	})
@@ -77,17 +86,4 @@ func (h *AuthHandler) Me(c *fiber.Ctx) error {
 		"user":    user,
 		"session": session,
 	})
-}
-
-func SessionErrorStatus(err error) int {
-	switch {
-	case errors.Is(err, store.ErrSessionNotFound):
-		return fiber.StatusUnauthorized
-	case errors.Is(err, store.ErrSessionExpired):
-		return fiber.StatusUnauthorized
-	case errors.Is(err, store.ErrUserNotFound):
-		return fiber.StatusUnauthorized
-	default:
-		return fiber.StatusInternalServerError
-	}
 }

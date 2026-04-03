@@ -9,7 +9,7 @@ import (
 	"be-zor/internal/store"
 )
 
-func RequireAuth(memoryStore *store.MemoryStore) fiber.Handler {
+func RequireAuth(bunStore *store.BunStore) fiber.Handler {
 	return func(c *fiber.Ctx) error {
 		token := extractBearerToken(c.Get("Authorization"))
 		if token == "" {
@@ -25,7 +25,7 @@ func RequireAuth(memoryStore *store.MemoryStore) fiber.Handler {
 			})
 		}
 
-		session, user, err := memoryStore.ValidateSession(token, sessionID)
+		session, user, err := bunStore.ValidateSession(c.Context(), token, sessionID)
 		if err != nil {
 			return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
 				"error": err.Error(),
