@@ -14,6 +14,7 @@ type Config struct {
 	DatabaseURL    string
 	FrontendOrigin string
 	GoogleClientID string
+	ShouldMigrate  bool
 	SessionTTL     time.Duration
 }
 
@@ -23,6 +24,7 @@ func Load() Config {
 		DatabaseURL:    getEnvOrFiles("DATABASE_URL", "", ".env"),
 		FrontendOrigin: getEnvOrFiles("FRONTEND_ORIGIN", "http://localhost:3000", ".env"),
 		GoogleClientID: loadGoogleClientID(),
+		ShouldMigrate:  getBoolOrFiles("SHOULD_MIGRATE", false, ".env"),
 		SessionTTL:     getDurationHours("SESSION_TTL_HOURS", 24, ".env"),
 	}
 }
@@ -56,6 +58,22 @@ func getDurationHours(key string, fallback int, envPaths ...string) time.Duratio
 	}
 
 	return time.Duration(fallback) * time.Hour
+}
+
+func getBoolOrFiles(key string, fallback bool, envPaths ...string) bool {
+	value := strings.TrimSpace(getEnvOrFiles(key, "", envPaths...))
+	if value == "" {
+		return fallback
+	}
+
+	switch strings.ToLower(value) {
+	case "1", "true", "yes", "y", "on":
+		return true
+	case "0", "false", "no", "n", "off":
+		return false
+	default:
+		return fallback
+	}
 }
 
 func lookupEnvFile(envPath, key string) (string, bool) {

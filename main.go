@@ -27,8 +27,12 @@ func main() {
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 
-	if err := database.ApplySchema(ctx, db); err != nil {
-		log.Fatal(err)
+	if cfg.ShouldMigrate {
+		group, err := database.Migrate(ctx, db)
+		if err != nil {
+			log.Fatal(err)
+		}
+		log.Printf("migration status: %s", database.FormatMigrationGroup(group))
 	}
 
 	app := fiber.New()
