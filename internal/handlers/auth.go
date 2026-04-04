@@ -1,6 +1,8 @@
 package handlers
 
 import (
+	"log"
+
 	"github.com/gofiber/fiber/v2"
 
 	"be-zor/internal/googleauth"
@@ -41,11 +43,20 @@ func (h *AuthHandler) GoogleSignup(c *fiber.Ctx) error {
 		})
 	}
 
-	user, err := h.store.UpsertGoogleUser(c.Context(), identity)
+	log.Printf("google signup hit: email=%s subject=%s", identity.Email, identity.Subject)
+
+	user, created, err := h.store.UpsertGoogleUser(c.Context(), identity)
 	if err != nil {
+		log.Printf("google signup db error: email=%s err=%v", identity.Email, err)
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 			"error": "failed to persist user",
 		})
+	}
+
+	if created {
+		log.Printf("google signup user created in db: email=%s user_id=%s", user.Email, user.ID)
+	} else {
+		log.Printf("google signup user already existed in db: email=%s user_id=%s", user.Email, user.ID)
 	}
 
 	session, sessionToken, err := h.store.CreateSession(
@@ -55,10 +66,13 @@ func (h *AuthHandler) GoogleSignup(c *fiber.Ctx) error {
 		c.IP(),
 	)
 	if err != nil {
+		log.Printf("google signup session create error: email=%s err=%v", user.Email, err)
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 			"error": "failed to create session",
 		})
 	}
+
+	log.Printf("google signup session created: email=%s session_id=%s", user.Email, session.ID)
 
 	return c.Status(fiber.StatusCreated).JSON(models.AuthResponse{
 		SessionToken: sessionToken,

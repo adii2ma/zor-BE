@@ -34,7 +34,7 @@ func NewBunStore(db *bun.DB, sessionTTL time.Duration) *BunStore {
 func (s *BunStore) UpsertGoogleUser(
 	ctx context.Context,
 	identity models.GoogleIdentity,
-) (models.User, error) {
+) (models.User, bool, error) {
 	now := time.Now().UTC()
 	var record models.UserRecord
 
@@ -69,20 +69,20 @@ func (s *BunStore) UpsertGoogleUser(
 				"updated_at",
 				"last_login_at",
 			).
-			Exec(ctx); err != nil {
-			return models.User{}, err
+				Exec(ctx); err != nil {
+			return models.User{}, false, err
 		}
 
-		return record.ToUser(), nil
+		return record.ToUser(), false, nil
 	case errors.Is(err, sql.ErrNoRows):
 		record = models.NewUserRecord(identity, now)
 		if _, err := s.db.NewInsert().Model(&record).Exec(ctx); err != nil {
-			return models.User{}, err
+			return models.User{}, false, err
 		}
 
-		return record.ToUser(), nil
+		return record.ToUser(), true, nil
 	default:
-		return models.User{}, err
+		return models.User{}, false, err
 	}
 }
 
