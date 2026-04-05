@@ -20,9 +20,11 @@ var (
 	ErrSessionNotFound     = errors.New("session not found")
 	ErrSessionExpired      = errors.New("session expired")
 	ErrUserNotFound        = errors.New("user not found")
+	ErrUserInactive        = errors.New("user is inactive")
 	ErrTransactionNotFound = errors.New("transaction not found")
 	ErrEmailAlreadyExists  = errors.New("email already exists")
 	ErrInvalidCredentials  = errors.New("invalid credentials")
+	ErrPasswordNotAllowed  = errors.New("password update is only allowed for local users")
 )
 
 type BunStore struct {
@@ -148,6 +150,9 @@ func (s *BunStore) AuthenticateLocalUser(
 	if record.PasswordHash == "" {
 		return models.User{}, ErrInvalidCredentials
 	}
+	if record.Status != models.UserStatusActive {
+		return models.User{}, ErrUserInactive
+	}
 
 	if err := bcrypt.CompareHashAndPassword([]byte(record.PasswordHash), []byte(password)); err != nil {
 		return models.User{}, ErrInvalidCredentials
@@ -182,6 +187,9 @@ func (s *BunStore) CreateSession(
 			return models.Session{}, "", ErrUserNotFound
 		}
 		return models.Session{}, "", err
+	}
+	if userRecord.Status != models.UserStatusActive {
+		return models.Session{}, "", ErrUserInactive
 	}
 
 	token, err := generateToken()

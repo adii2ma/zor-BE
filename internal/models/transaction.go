@@ -120,13 +120,6 @@ type AnalystUserTransactions struct {
 	Transactions     []AnalystTransaction `json:"transactions"`
 }
 
-type AdminUserOption struct {
-	ID    string   `json:"id"`
-	Name  string   `json:"name"`
-	Email string   `json:"email"`
-	Role  UserRole `json:"role"`
-}
-
 func NewTransactionRecord(input TransactionMutationInput, now time.Time) TransactionRecord {
 	return TransactionRecord{
 		ID:              uuid.NewString(),

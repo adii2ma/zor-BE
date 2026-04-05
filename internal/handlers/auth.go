@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"errors"
 	"log"
 
 	"github.com/gofiber/fiber/v2"
@@ -66,6 +67,11 @@ func (h *AuthHandler) GoogleSignup(c *fiber.Ctx) error {
 		c.IP(),
 	)
 	if err != nil {
+		if errors.Is(err, store.ErrUserInactive) {
+			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{
+				"error": "user account is inactive",
+			})
+		}
 		log.Printf("google signup session create error: email=%s err=%v", user.Email, err)
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 			"error": "failed to create session",

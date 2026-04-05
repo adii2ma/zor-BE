@@ -7,6 +7,7 @@ import (
 
 	"github.com/gofiber/fiber/v2"
 
+	"be-zor/internal/middleware"
 	"be-zor/internal/models"
 	"be-zor/internal/store"
 )
@@ -21,6 +22,106 @@ func NewAdminHandler(bunStore *store.BunStore) *AdminHandler {
 	}
 }
 
+func (h *AdminHandler) ListUsers(c *fiber.Ctx) error {
+	users, err := h.store.ListManagedUsers(c.Context())
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"error": "failed to load users",
+		})
+	}
+
+	return c.JSON(fiber.Map{
+		"users": users,
+	})
+}
+
+func (h *AdminHandler) CreateUser(c *fiber.Ctx) error {
+	input, err := parseAdminUserCreateRequest(c)
+	if err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": err.Error(),
+		})
+	}
+
+	user, err := h.store.CreateManagedUser(c.Context(), input)
+	if err != nil {
+		return adminUserStoreError(c, err)
+	}
+
+	return c.Status(fiber.StatusCreated).JSON(fiber.Map{
+		"user": user,
+	})
+}
+
+func (h *AdminHandler) UpdateUser(c *fiber.Ctx) error {
+	userID := strings.TrimSpace(c.Params("userID"))
+	if userID == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": "user id is required",
+		})
+	}
+
+	input, err := parseAdminUserUpdateRequest(c)
+	if err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": err.Error(),
+		})
+	}
+
+	currentUser, ok := middleware.CurrentUser(c)
+	if !ok {
+		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
+			"error": "authenticated user is unavailable",
+		})
+	}
+	if currentUser.ID == userID && input.Role != models.UserRoleAdmin {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": "admin cannot remove their own admin role",
+		})
+	}
+	if currentUser.ID == userID && input.Status != models.UserStatusActive {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": "admin cannot deactivate their own account",
+		})
+	}
+
+	user, err := h.store.UpdateManagedUser(c.Context(), userID, input)
+	if err != nil {
+		return adminUserStoreError(c, err)
+	}
+
+	return c.JSON(fiber.Map{
+		"user": user,
+	})
+}
+
+func (h *AdminHandler) DeleteUser(c *fiber.Ctx) error {
+	userID := strings.TrimSpace(c.Params("userID"))
+	if userID == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": "user id is required",
+		})
+	}
+
+	currentUser, ok := middleware.CurrentUser(c)
+	if !ok {
+		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
+			"error": "authenticated user is unavailable",
+		})
+	}
+	if currentUser.ID == userID {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": "admin cannot delete their own account",
+		})
+	}
+
+	if err := h.store.DeleteUser(c.Context(), userID); err != nil {
+		return adminUserStoreError(c, err)
+	}
+
+	return c.SendStatus(fiber.StatusNoContent)
+}
+
 func (h *AdminHandler) ListTransactions(c *fiber.Ctx) error {
 	transactions, err := h.store.ListAllTransactions(c.Context())
 	if err != nil {
@@ -29,15 +130,7 @@ func (h *AdminHandler) ListTransactions(c *fiber.Ctx) error {
 		})
 	}
 
-	users, err := h.store.ListUsers(c.Context())
-	if err != nil {
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
-			"error": "failed to load users",
-		})
-	}
-
 	return c.JSON(fiber.Map{
-		"users":        users,
 		"transactions": transactions,
 	})
 }
@@ -52,7 +145,7 @@ func (h *AdminHandler) CreateTransaction(c *fiber.Ctx) error {
 
 	transaction, err := h.store.CreateTransaction(c.Context(), input)
 	if err != nil {
-		return adminStoreError(c, err)
+		return adminTransactionStoreError(c, err)
 	}
 
 	return c.Status(fiber.StatusCreated).JSON(fiber.Map{
@@ -77,7 +170,7 @@ func (h *AdminHandler) UpdateTransaction(c *fiber.Ctx) error {
 
 	transaction, err := h.store.UpdateTransaction(c.Context(), transactionID, input)
 	if err != nil {
-		return adminStoreError(c, err)
+		return adminTransactionStoreError(c, err)
 	}
 
 	return c.JSON(fiber.Map{
@@ -94,7 +187,7 @@ func (h *AdminHandler) DeleteTransaction(c *fiber.Ctx) error {
 	}
 
 	if err := h.store.DeleteTransaction(c.Context(), transactionID); err != nil {
-		return adminStoreError(c, err)
+		return adminTransactionStoreError(c, err)
 	}
 
 	return c.SendStatus(fiber.StatusNoContent)
@@ -141,7 +234,105 @@ func parseTransactionMutationRequest(c *fiber.Ctx) (models.TransactionMutationIn
 	}, nil
 }
 
-func adminStoreError(c *fiber.Ctx, err error) error {
+func parseAdminUserCreateRequest(c *fiber.Ctx) (models.AdminUserCreateInput, error) {
+	var request models.AdminUserCreateRequest
+	if err := c.BodyParser(&request); err != nil {
+		return models.AdminUserCreateInput{}, errors.New("request body is invalid")
+	}
+
+	request.Name = strings.TrimSpace(request.Name)
+	request.Email = strings.TrimSpace(request.Email)
+	request.Password = strings.TrimSpace(request.Password)
+
+	if request.Name == "" {
+		return models.AdminUserCreateInput{}, errors.New("name is required")
+	}
+	if request.Email == "" {
+		return models.AdminUserCreateInput{}, errors.New("email is required")
+	}
+	if request.Password == "" {
+		return models.AdminUserCreateInput{}, errors.New("password is required")
+	}
+	if len(request.Password) < 8 {
+		return models.AdminUserCreateInput{}, errors.New("password must be at least 8 characters long")
+	}
+	if request.Role != models.UserRoleViewer && request.Role != models.UserRoleAnalyst && request.Role != models.UserRoleAdmin {
+		return models.AdminUserCreateInput{}, errors.New("role must be viewer, analyst, or admin")
+	}
+	if request.Status != models.UserStatusActive && request.Status != models.UserStatusInactive {
+		return models.AdminUserCreateInput{}, errors.New("status must be active or inactive")
+	}
+
+	return models.AdminUserCreateInput{
+		Name:     request.Name,
+		Email:    request.Email,
+		Password: request.Password,
+		Role:     request.Role,
+		Status:   request.Status,
+	}, nil
+}
+
+func parseAdminUserUpdateRequest(c *fiber.Ctx) (models.AdminUserUpdateInput, error) {
+	var request models.AdminUserUpdateRequest
+	if err := c.BodyParser(&request); err != nil {
+		return models.AdminUserUpdateInput{}, errors.New("request body is invalid")
+	}
+
+	request.Name = strings.TrimSpace(request.Name)
+	request.Email = strings.TrimSpace(request.Email)
+	request.Password = strings.TrimSpace(request.Password)
+
+	if request.Name == "" {
+		return models.AdminUserUpdateInput{}, errors.New("name is required")
+	}
+	if request.Email == "" {
+		return models.AdminUserUpdateInput{}, errors.New("email is required")
+	}
+	if request.Password != "" && len(request.Password) < 8 {
+		return models.AdminUserUpdateInput{}, errors.New("password must be at least 8 characters long")
+	}
+	if request.Role != models.UserRoleViewer && request.Role != models.UserRoleAnalyst && request.Role != models.UserRoleAdmin {
+		return models.AdminUserUpdateInput{}, errors.New("role must be viewer, analyst, or admin")
+	}
+	if request.Status != models.UserStatusActive && request.Status != models.UserStatusInactive {
+		return models.AdminUserUpdateInput{}, errors.New("status must be active or inactive")
+	}
+
+	return models.AdminUserUpdateInput{
+		Name:     request.Name,
+		Email:    request.Email,
+		Password: request.Password,
+		Role:     request.Role,
+		Status:   request.Status,
+	}, nil
+}
+
+func adminUserStoreError(c *fiber.Ctx, err error) error {
+	switch {
+	case errors.Is(err, store.ErrUserNotFound):
+		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
+			"error": "user was not found",
+		})
+	case errors.Is(err, store.ErrEmailAlreadyExists):
+		return c.Status(fiber.StatusConflict).JSON(fiber.Map{
+			"error": "an account with this email already exists",
+		})
+	case errors.Is(err, store.ErrPasswordNotAllowed):
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": "password updates are only allowed for local users",
+		})
+	case err.Error() == "email address is invalid":
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": err.Error(),
+		})
+	default:
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"error": "user operation failed",
+		})
+	}
+}
+
+func adminTransactionStoreError(c *fiber.Ctx, err error) error {
 	switch {
 	case errors.Is(err, store.ErrUserNotFound):
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{

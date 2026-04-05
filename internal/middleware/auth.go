@@ -32,6 +32,11 @@ func RequireAuth(bunStore *store.BunStore) fiber.Handler {
 				"error": err.Error(),
 			})
 		}
+		if user.Status != models.UserStatusActive {
+			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{
+				"error": "user account is inactive",
+			})
+		}
 
 		c.Locals("auth.session", session)
 		c.Locals("auth.user", user)

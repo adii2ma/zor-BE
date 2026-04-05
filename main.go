@@ -73,6 +73,10 @@ func main() {
 	analyst.Get("/overview", analystHandler.Overview)
 
 	admin := protected.Group("/admin", middleware.RequireRole(models.UserRoleAdmin))
+	admin.Get("/users", adminHandler.ListUsers)
+	admin.Post("/users", adminHandler.CreateUser)
+	admin.Patch("/users/:userID", adminHandler.UpdateUser)
+	admin.Delete("/users/:userID", adminHandler.DeleteUser)
 	admin.Get("/transactions", adminHandler.ListTransactions)
 	admin.Post("/transactions", adminHandler.CreateTransaction)
 	admin.Patch("/transactions/:transactionID", adminHandler.UpdateTransaction)

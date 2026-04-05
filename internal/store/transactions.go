@@ -62,7 +62,7 @@ func (s *BunStore) ListUsers(
 	var users []models.AdminUserOption
 	if err := s.db.NewSelect().
 		TableExpr("users AS u").
-		ColumnExpr("u.id, u.name, u.email, u.role").
+		ColumnExpr("u.id, u.name, u.email, u.role, u.status").
 		OrderExpr("name ASC, email ASC").
 		Scan(ctx, &users); err != nil {
 		return nil, err

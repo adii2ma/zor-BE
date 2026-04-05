@@ -113,6 +113,10 @@ func (h *AuthHandler) LocalSignIn(c *fiber.Ctx) error {
 			return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
 				"error": "email or password is incorrect",
 			})
+		case errors.Is(err, store.ErrUserInactive):
+			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{
+				"error": "user account is inactive",
+			})
 		case err.Error() == "email address is invalid":
 			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
 				"error": err.Error(),
@@ -131,6 +135,11 @@ func (h *AuthHandler) LocalSignIn(c *fiber.Ctx) error {
 		c.IP(),
 	)
 	if err != nil {
+		if errors.Is(err, store.ErrUserInactive) {
+			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{
+				"error": "user account is inactive",
+			})
+		}
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 			"error": "failed to create session",
 		})
