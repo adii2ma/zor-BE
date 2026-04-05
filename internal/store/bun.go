@@ -266,11 +266,15 @@ func (s *BunStore) ValidateSession(
 func (s *BunStore) ListTransactionsByUser(
 	ctx context.Context,
 	userID string,
+	filters models.TransactionFilters,
 ) ([]models.Transaction, error) {
 	var records []models.TransactionRecord
-	if err := s.db.NewSelect().
+	query := s.db.NewSelect().
 		Model(&records).
-		Where("user_id = ?", userID).
+		Where("user_id = ?", userID)
+	query = applyTransactionFilters(query, filters, "")
+
+	if err := query.
 		OrderExpr("transaction_date DESC, created_at DESC").
 		Scan(ctx); err != nil {
 		return nil, err

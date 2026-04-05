@@ -4,7 +4,10 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 	"time"
+
+	"github.com/uptrace/bun"
 
 	"be-zor/internal/models"
 )
@@ -25,12 +28,16 @@ type adminTransactionRow struct {
 
 func (s *BunStore) ListAllTransactions(
 	ctx context.Context,
+	filters models.TransactionFilters,
 ) ([]models.AdminTransaction, error) {
 	var rows []adminTransactionRow
-	if err := s.db.NewSelect().
+	query := s.db.NewSelect().
 		TableExpr("transactions AS t").
 		ColumnExpr("t.id, t.user_id, u.name AS user_name, u.email AS user_email, t.amount, t.type, t.category, t.transaction_date, t.description, t.created_at, t.updated_at").
-		Join("JOIN users AS u ON u.id = t.user_id").
+		Join("JOIN users AS u ON u.id = t.user_id")
+	query = applyTransactionFilters(query, filters, "t")
+
+	if err := query.
 		OrderExpr("u.name ASC, t.transaction_date DESC, t.created_at DESC").
 		Scan(ctx, &rows); err != nil {
 		return nil, err
@@ -146,6 +153,34 @@ func (s *BunStore) DeleteTransaction(
 	}
 
 	return nil
+}
+
+func applyTransactionFilters(
+	query *bun.SelectQuery,
+	filters models.TransactionFilters,
+	tableAlias string,
+) *bun.SelectQuery {
+	column := func(name string) string {
+		if tableAlias == "" {
+			return name
+		}
+		return fmt.Sprintf("%s.%s", tableAlias, name)
+	}
+
+	if filters.DateFrom != nil {
+		query = query.Where(fmt.Sprintf("%s >= ?", column("transaction_date")), filters.DateFrom.Format("2006-01-02"))
+	}
+	if filters.DateTo != nil {
+		query = query.Where(fmt.Sprintf("%s <= ?", column("transaction_date")), filters.DateTo.Format("2006-01-02"))
+	}
+	if filters.Category != "" {
+		query = query.Where(fmt.Sprintf("LOWER(%s) = LOWER(?)", column("category")), filters.Category)
+	}
+	if filters.Type != "" {
+		query = query.Where(fmt.Sprintf("%s = ?", column("type")), filters.Type)
+	}
+
+	return query
 }
 
 func (s *BunStore) ensureUserExists(ctx context.Context, userID string) error {

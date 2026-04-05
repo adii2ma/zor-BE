@@ -4,6 +4,7 @@ import (
 	"github.com/gofiber/fiber/v2"
 
 	"be-zor/internal/middleware"
+	"be-zor/internal/models"
 	"be-zor/internal/store"
 	"be-zor/internal/summary"
 )
@@ -26,7 +27,7 @@ func (h *DashboardHandler) Summary(c *fiber.Ctx) error {
 		})
 	}
 
-	transactions, err := h.store.ListTransactionsByUser(c.Context(), user.ID)
+	transactions, err := h.store.ListTransactionsByUser(c.Context(), user.ID, models.TransactionFilters{})
 	if err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 			"error": "failed to load user transactions",

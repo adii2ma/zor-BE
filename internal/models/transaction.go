@@ -85,6 +85,13 @@ type TransactionMutationInput struct {
 	Description     string
 }
 
+type TransactionFilters struct {
+	DateFrom *time.Time
+	DateTo   *time.Time
+	Category string
+	Type     TransactionType
+}
+
 type AdminTransaction struct {
 	ID              string          `json:"id"`
 	UserID          string          `json:"userId"`
@@ -111,8 +118,7 @@ type AnalystTransaction struct {
 }
 
 type AnalystUserTransactions struct {
-	UserName         string               `json:"userName"`
-	UserEmail        string               `json:"userEmail"`
+	AccountLabel     string               `json:"accountLabel"`
 	TransactionCount int                  `json:"transactionCount"`
 	TotalIncome      float64              `json:"totalIncome"`
 	TotalExpenses    float64              `json:"totalExpenses"`

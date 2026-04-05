@@ -2,6 +2,7 @@ package summary
 
 import (
 	"sort"
+	"strconv"
 
 	"be-zor/internal/models"
 )
@@ -17,8 +18,6 @@ func BuildOrganizationSummary(transactions []models.AdminTransaction) models.Das
 
 func BuildAnalystUserTransactions(transactions []models.AdminTransaction) []models.AnalystUserTransactions {
 	type bucket struct {
-		userName      string
-		userEmail     string
 		totalIncome   float64
 		totalExpenses float64
 		transactions  []models.AnalystTransaction
@@ -26,13 +25,10 @@ func BuildAnalystUserTransactions(transactions []models.AdminTransaction) []mode
 
 	grouped := make(map[string]*bucket)
 	for _, transaction := range transactions {
-		key := transaction.UserEmail
+		key := transaction.UserID
 		entry, ok := grouped[key]
 		if !ok {
-			entry = &bucket{
-				userName:  transaction.UserName,
-				userEmail: transaction.UserEmail,
-			}
+			entry = &bucket{}
 			grouped[key] = entry
 		}
 
@@ -45,8 +41,15 @@ func BuildAnalystUserTransactions(transactions []models.AdminTransaction) []mode
 		entry.transactions = append(entry.transactions, transaction.ToAnalystTransaction())
 	}
 
+	userIDs := make([]string, 0, len(grouped))
+	for userID := range grouped {
+		userIDs = append(userIDs, userID)
+	}
+	sort.Strings(userIDs)
+
 	recordsByUser := make([]models.AnalystUserTransactions, 0, len(grouped))
-	for _, entry := range grouped {
+	for index, userID := range userIDs {
+		entry := grouped[userID]
 		sort.Slice(entry.transactions, func(i, j int) bool {
 			if entry.transactions[i].TransactionDate.Equal(entry.transactions[j].TransactionDate) {
 				return entry.transactions[i].CreatedAt.After(entry.transactions[j].CreatedAt)
@@ -55,8 +58,7 @@ func BuildAnalystUserTransactions(transactions []models.AdminTransaction) []mode
 		})
 
 		recordsByUser = append(recordsByUser, models.AnalystUserTransactions{
-			UserName:         entry.userName,
-			UserEmail:        entry.userEmail,
+			AccountLabel:     accountLabel(index + 1),
 			TransactionCount: len(entry.transactions),
 			TotalIncome:      entry.totalIncome,
 			TotalExpenses:    entry.totalExpenses,
@@ -65,12 +67,9 @@ func BuildAnalystUserTransactions(transactions []models.AdminTransaction) []mode
 		})
 	}
 
-	sort.Slice(recordsByUser, func(i, j int) bool {
-		if recordsByUser[i].UserName == recordsByUser[j].UserName {
-			return recordsByUser[i].UserEmail < recordsByUser[j].UserEmail
-		}
-		return recordsByUser[i].UserName < recordsByUser[j].UserName
-	})
-
 	return recordsByUser
+}
+
+func accountLabel(index int) string {
+	return "Account " + strconv.Itoa(index)
 }

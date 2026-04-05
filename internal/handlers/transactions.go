@@ -25,7 +25,14 @@ func (h *TransactionHandler) List(c *fiber.Ctx) error {
 		})
 	}
 
-	transactions, err := h.store.ListTransactionsByUser(c.Context(), user.ID)
+	filters, err := parseTransactionFilters(c)
+	if err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": err.Error(),
+		})
+	}
+
+	transactions, err := h.store.ListTransactionsByUser(c.Context(), user.ID, filters)
 	if err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 			"error": "failed to load user transactions",

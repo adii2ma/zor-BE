@@ -18,7 +18,14 @@ func NewAnalystHandler(bunStore *store.BunStore) *AnalystHandler {
 }
 
 func (h *AnalystHandler) Overview(c *fiber.Ctx) error {
-	transactions, err := h.store.ListAllTransactions(c.Context())
+	filters, err := parseTransactionFilters(c)
+	if err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": err.Error(),
+		})
+	}
+
+	transactions, err := h.store.ListAllTransactions(c.Context(), filters)
 	if err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 			"error": "failed to load organization transactions",
