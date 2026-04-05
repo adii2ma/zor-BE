@@ -6,9 +6,12 @@ import (
 	"database/sql"
 	"encoding/base64"
 	"errors"
+	"net/mail"
+	"strings"
 	"time"
 
 	"github.com/uptrace/bun"
+	"golang.org/x/crypto/bcrypt"
 
 	"be-zor/internal/models"
 )
@@ -18,6 +21,8 @@ var (
 	ErrSessionExpired      = errors.New("session expired")
 	ErrUserNotFound        = errors.New("user not found")
 	ErrTransactionNotFound = errors.New("transaction not found")
+	ErrEmailAlreadyExists  = errors.New("email already exists")
+	ErrInvalidCredentials  = errors.New("invalid credentials")
 )
 
 type BunStore struct {
@@ -87,6 +92,80 @@ func (s *BunStore) UpsertGoogleUser(
 	}
 }
 
+func (s *BunStore) CreateLocalUser(
+	ctx context.Context,
+	name string,
+	email string,
+	password string,
+) (models.User, error) {
+	name = strings.TrimSpace(name)
+	email = normalizeEmail(email)
+
+	if _, err := mail.ParseAddress(email); err != nil {
+		return models.User{}, errors.New("email address is invalid")
+	}
+
+	passwordHash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
+	if err != nil {
+		return models.User{}, err
+	}
+
+	now := time.Now().UTC()
+	record := models.NewLocalUserRecord(name, email, string(passwordHash), now)
+	if _, err := s.db.NewInsert().Model(&record).Exec(ctx); err != nil {
+		if isUniqueViolation(err) {
+			return models.User{}, ErrEmailAlreadyExists
+		}
+		return models.User{}, err
+	}
+
+	return record.ToUser(), nil
+}
+
+func (s *BunStore) AuthenticateLocalUser(
+	ctx context.Context,
+	email string,
+	password string,
+) (models.User, error) {
+	email = normalizeEmail(email)
+	if _, err := mail.ParseAddress(email); err != nil {
+		return models.User{}, errors.New("email address is invalid")
+	}
+
+	var record models.UserRecord
+	if err := s.db.NewSelect().
+		Model(&record).
+		Where("provider = ?", "local").
+		Where("email = ?", email).
+		Limit(1).
+		Scan(ctx); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return models.User{}, ErrInvalidCredentials
+		}
+		return models.User{}, err
+	}
+
+	if record.PasswordHash == "" {
+		return models.User{}, ErrInvalidCredentials
+	}
+
+	if err := bcrypt.CompareHashAndPassword([]byte(record.PasswordHash), []byte(password)); err != nil {
+		return models.User{}, ErrInvalidCredentials
+	}
+
+	record.UpdatedAt = time.Now().UTC()
+	record.LastLoginAt = record.UpdatedAt
+	if _, err := s.db.NewUpdate().
+		Model(&record).
+		WherePK().
+		Column("updated_at", "last_login_at").
+		Exec(ctx); err != nil {
+		return models.User{}, err
+	}
+
+	return record.ToUser(), nil
+}
+
 func (s *BunStore) CreateSession(
 	ctx context.Context,
 	userID string,
@@ -113,6 +192,7 @@ func (s *BunStore) CreateSession(
 	now := time.Now().UTC()
 	record := models.NewSessionRecord(
 		userID,
+		userRecord.Provider,
 		token,
 		userAgent,
 		ipAddress,
@@ -203,4 +283,17 @@ func generateToken() (string, error) {
 	}
 
 	return base64.RawURLEncoding.EncodeToString(bytes), nil
+}
+
+func normalizeEmail(email string) string {
+	return strings.ToLower(strings.TrimSpace(email))
+}
+
+func isUniqueViolation(err error) bool {
+	if err == nil {
+		return false
+	}
+
+	message := strings.ToLower(err.Error())
+	return strings.Contains(message, "duplicate key") || strings.Contains(message, "sqlstate=23505")
 }

@@ -32,10 +32,18 @@ const (
 	UserRoleAdmin   UserRole = "admin"
 )
 
+type UserStatus string
+
+const (
+	UserStatusActive   UserStatus = "active"
+	UserStatusInactive UserStatus = "inactive"
+)
+
 type User struct {
 	ID            string         `json:"id"`
 	Provider      string         `json:"provider"`
 	Role          UserRole       `json:"role"`
+	Status        UserStatus     `json:"status"`
 	Email         string         `json:"email"`
 	EmailVerified bool           `json:"emailVerified"`
 	Name          string         `json:"name"`
@@ -53,26 +61,28 @@ type User struct {
 type UserRecord struct {
 	bun.BaseModel `bun:"table:users,alias:u"`
 
-	ID                    string    `bun:"id,pk" json:"-"`
-	Provider              string    `bun:"provider,notnull" json:"-"`
-	Role                  UserRole  `bun:"role,notnull" json:"-"`
-	GoogleSubject         string    `bun:"google_subject,notnull" json:"-"`
-	Email                 string    `bun:"email,notnull" json:"-"`
-	EmailVerified         bool      `bun:"email_verified,notnull" json:"-"`
-	Name                  string    `bun:"name,notnull" json:"-"`
-	GivenName             string    `bun:"given_name" json:"-"`
-	FamilyName            string    `bun:"family_name" json:"-"`
-	Picture               string    `bun:"picture" json:"-"`
-	Locale                string    `bun:"locale" json:"-"`
-	HostedDomain          string    `bun:"hosted_domain" json:"-"`
-	GoogleIssuer          string    `bun:"google_issuer,notnull" json:"-"`
-	GoogleAuthorizedParty string    `bun:"google_authorized_party" json:"-"`
-	GoogleAudience        string    `bun:"google_audience,notnull" json:"-"`
-	GoogleIssuedAt        time.Time `bun:"google_issued_at,notnull" json:"-"`
-	GoogleExpiresAt       time.Time `bun:"google_expires_at,notnull" json:"-"`
-	CreatedAt             time.Time `bun:"created_at,notnull" json:"-"`
-	UpdatedAt             time.Time `bun:"updated_at,notnull" json:"-"`
-	LastLoginAt           time.Time `bun:"last_login_at,notnull" json:"-"`
+	ID                    string     `bun:"id,pk" json:"-"`
+	Provider              string     `bun:"provider,notnull" json:"-"`
+	Role                  UserRole   `bun:"role,notnull" json:"-"`
+	Status                UserStatus `bun:"status,notnull" json:"-"`
+	PasswordHash          string     `bun:"password_hash,notnull" json:"-"`
+	GoogleSubject         string     `bun:"google_subject,notnull" json:"-"`
+	Email                 string     `bun:"email,notnull" json:"-"`
+	EmailVerified         bool       `bun:"email_verified,notnull" json:"-"`
+	Name                  string     `bun:"name,notnull" json:"-"`
+	GivenName             string     `bun:"given_name" json:"-"`
+	FamilyName            string     `bun:"family_name" json:"-"`
+	Picture               string     `bun:"picture" json:"-"`
+	Locale                string     `bun:"locale" json:"-"`
+	HostedDomain          string     `bun:"hosted_domain" json:"-"`
+	GoogleIssuer          string     `bun:"google_issuer,notnull" json:"-"`
+	GoogleAuthorizedParty string     `bun:"google_authorized_party" json:"-"`
+	GoogleAudience        string     `bun:"google_audience,notnull" json:"-"`
+	GoogleIssuedAt        time.Time  `bun:"google_issued_at,notnull" json:"-"`
+	GoogleExpiresAt       time.Time  `bun:"google_expires_at,notnull" json:"-"`
+	CreatedAt             time.Time  `bun:"created_at,notnull" json:"-"`
+	UpdatedAt             time.Time  `bun:"updated_at,notnull" json:"-"`
+	LastLoginAt           time.Time  `bun:"last_login_at,notnull" json:"-"`
 }
 
 type Session struct {
@@ -105,6 +115,18 @@ type GoogleAuthRequest struct {
 	Credential string `json:"credential"`
 }
 
+type LocalSignUpRequest struct {
+	Name            string `json:"name"`
+	Email           string `json:"email"`
+	Password        string `json:"password"`
+	ConfirmPassword string `json:"confirmPassword"`
+}
+
+type LocalSignInRequest struct {
+	Email    string `json:"email"`
+	Password string `json:"password"`
+}
+
 type AuthResponse struct {
 	SessionToken string  `json:"sessionToken"`
 	Session      Session `json:"session"`
@@ -116,10 +138,34 @@ func NewUserRecord(identity GoogleIdentity, now time.Time) UserRecord {
 		ID:        uuid.NewString(),
 		Provider:  "google",
 		Role:      UserRoleViewer,
+		Status:    UserStatusActive,
 		CreatedAt: now,
 	}
 	record.ApplyGoogleIdentity(identity, now)
 	return record
+}
+
+func NewLocalUserRecord(name, email, passwordHash string, now time.Time) UserRecord {
+	id := uuid.NewString()
+	return UserRecord{
+		ID:                    id,
+		Provider:              "local",
+		Role:                  UserRoleViewer,
+		Status:                UserStatusActive,
+		PasswordHash:          passwordHash,
+		GoogleSubject:         "local:" + id,
+		Email:                 email,
+		EmailVerified:         true,
+		Name:                  name,
+		GoogleIssuer:          "local",
+		GoogleAuthorizedParty: "",
+		GoogleAudience:        "local",
+		GoogleIssuedAt:        now,
+		GoogleExpiresAt:       now,
+		CreatedAt:             now,
+		UpdatedAt:             now,
+		LastLoginAt:           now,
+	}
 }
 
 func (u *UserRecord) ApplyGoogleIdentity(identity GoogleIdentity, now time.Time) {
@@ -143,19 +189,9 @@ func (u *UserRecord) ApplyGoogleIdentity(identity GoogleIdentity, now time.Time)
 }
 
 func (u UserRecord) ToUser() User {
-	return User{
-		ID:            u.ID,
-		Provider:      u.Provider,
-		Role:          u.Role,
-		Email:         u.Email,
-		EmailVerified: u.EmailVerified,
-		Name:          u.Name,
-		GivenName:     u.GivenName,
-		FamilyName:    u.FamilyName,
-		Picture:       u.Picture,
-		Locale:        u.Locale,
-		HostedDomain:  u.HostedDomain,
-		Google: GoogleIdentity{
+	googleIdentity := GoogleIdentity{}
+	if u.Provider == "google" {
+		googleIdentity = GoogleIdentity{
 			Issuer:          u.GoogleIssuer,
 			AuthorizedParty: u.GoogleAuthorizedParty,
 			Audience:        u.GoogleAudience,
@@ -170,15 +206,32 @@ func (u UserRecord) ToUser() User {
 			HostedDomain:    u.HostedDomain,
 			IssuedAt:        u.GoogleIssuedAt,
 			ExpiresAt:       u.GoogleExpiresAt,
-		},
-		CreatedAt:   u.CreatedAt,
-		UpdatedAt:   u.UpdatedAt,
-		LastLoginAt: u.LastLoginAt,
+		}
+	}
+
+	return User{
+		ID:            u.ID,
+		Provider:      u.Provider,
+		Role:          u.Role,
+		Status:        u.Status,
+		Email:         u.Email,
+		EmailVerified: u.EmailVerified,
+		Name:          u.Name,
+		GivenName:     u.GivenName,
+		FamilyName:    u.FamilyName,
+		Picture:       u.Picture,
+		Locale:        u.Locale,
+		HostedDomain:  u.HostedDomain,
+		Google:        googleIdentity,
+		CreatedAt:     u.CreatedAt,
+		UpdatedAt:     u.UpdatedAt,
+		LastLoginAt:   u.LastLoginAt,
 	}
 }
 
 func NewSessionRecord(
 	userID string,
+	provider string,
 	token string,
 	userAgent string,
 	ipAddress string,
@@ -189,7 +242,7 @@ func NewSessionRecord(
 		ID:         uuid.NewString(),
 		UserID:     userID,
 		Token:      token,
-		Provider:   "google",
+		Provider:   provider,
 		CreatedAt:  now,
 		ExpiresAt:  expiresAt,
 		LastUsedAt: now,

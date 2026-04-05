@@ -61,6 +61,8 @@ func main() {
 	api := app.Group("/api")
 	api.Post("/auth/google/signup", authHandler.GoogleSignup)
 	api.Post("/auth/google/signin", authHandler.GoogleSignup)
+	api.Post("/auth/local/signup", authHandler.LocalSignUp)
+	api.Post("/auth/local/signin", authHandler.LocalSignIn)
 
 	protected := api.Group("", middleware.RequireAuth(bunStore))
 	protected.Get("/me", authHandler.Me)
