@@ -1,6 +1,7 @@
 package middleware
 
 import (
+	"fmt"
 	"strings"
 
 	"github.com/gofiber/fiber/v2"
@@ -47,6 +48,33 @@ func CurrentUser(c *fiber.Ctx) (models.User, bool) {
 func CurrentSession(c *fiber.Ctx) (models.Session, bool) {
 	session, ok := c.Locals("auth.session").(models.Session)
 	return session, ok
+}
+
+func RequireRole(allowedRoles ...models.UserRole) fiber.Handler {
+	allowed := make(map[models.UserRole]struct{}, len(allowedRoles))
+	roleNames := make([]string, 0, len(allowedRoles))
+
+	for _, role := range allowedRoles {
+		allowed[role] = struct{}{}
+		roleNames = append(roleNames, string(role))
+	}
+
+	return func(c *fiber.Ctx) error {
+		user, ok := CurrentUser(c)
+		if !ok {
+			return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
+				"error": "authenticated user is unavailable",
+			})
+		}
+
+		if _, ok := allowed[user.Role]; ok {
+			return c.Next()
+		}
+
+		return c.Status(fiber.StatusForbidden).JSON(fiber.Map{
+			"error": fmt.Sprintf("forbidden: requires role %s", strings.Join(roleNames, " or ")),
+		})
+	}
 }
 
 func extractBearerToken(header string) string {

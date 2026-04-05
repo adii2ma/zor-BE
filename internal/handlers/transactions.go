@@ -34,6 +34,7 @@ func (h *TransactionHandler) List(c *fiber.Ctx) error {
 
 	return c.JSON(fiber.Map{
 		"user":         user,
+		"role":         user.Role,
 		"transactions": transactions,
 	})
 }

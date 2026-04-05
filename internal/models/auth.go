@@ -24,9 +24,18 @@ type GoogleIdentity struct {
 	ExpiresAt       time.Time `json:"expiresAt"`
 }
 
+type UserRole string
+
+const (
+	UserRoleViewer  UserRole = "viewer"
+	UserRoleAnalyst UserRole = "analyst"
+	UserRoleAdmin   UserRole = "admin"
+)
+
 type User struct {
 	ID            string         `json:"id"`
 	Provider      string         `json:"provider"`
+	Role          UserRole       `json:"role"`
 	Email         string         `json:"email"`
 	EmailVerified bool           `json:"emailVerified"`
 	Name          string         `json:"name"`
@@ -46,6 +55,7 @@ type UserRecord struct {
 
 	ID                    string    `bun:"id,pk" json:"-"`
 	Provider              string    `bun:"provider,notnull" json:"-"`
+	Role                  UserRole  `bun:"role,notnull" json:"-"`
 	GoogleSubject         string    `bun:"google_subject,notnull" json:"-"`
 	Email                 string    `bun:"email,notnull" json:"-"`
 	EmailVerified         bool      `bun:"email_verified,notnull" json:"-"`
@@ -105,6 +115,7 @@ func NewUserRecord(identity GoogleIdentity, now time.Time) UserRecord {
 	record := UserRecord{
 		ID:        uuid.NewString(),
 		Provider:  "google",
+		Role:      UserRoleViewer,
 		CreatedAt: now,
 	}
 	record.ApplyGoogleIdentity(identity, now)
@@ -135,6 +146,7 @@ func (u UserRecord) ToUser() User {
 	return User{
 		ID:            u.ID,
 		Provider:      u.Provider,
+		Role:          u.Role,
 		Email:         u.Email,
 		EmailVerified: u.EmailVerified,
 		Name:          u.Name,

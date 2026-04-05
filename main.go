@@ -13,6 +13,7 @@ import (
 	"be-zor/internal/googleauth"
 	"be-zor/internal/handlers"
 	"be-zor/internal/middleware"
+	"be-zor/internal/models"
 	"be-zor/internal/store"
 )
 
@@ -39,7 +40,7 @@ func main() {
 	app.Use(cors.New(cors.Config{
 		AllowOrigins: cfg.FrontendOrigin,
 		AllowHeaders: "Origin, Content-Type, Accept, Authorization, X-Session-ID",
-		AllowMethods: "GET,POST,OPTIONS",
+		AllowMethods: "GET,POST,PATCH,DELETE,OPTIONS",
 	}))
 
 	bunStore := store.NewBunStore(db, cfg.SessionTTL)
@@ -47,6 +48,8 @@ func main() {
 	authHandler := handlers.NewAuthHandler(verifier, bunStore)
 	dashboardHandler := handlers.NewDashboardHandler(bunStore)
 	transactionHandler := handlers.NewTransactionHandler(bunStore)
+	analystHandler := handlers.NewAnalystHandler(bunStore)
+	adminHandler := handlers.NewAdminHandler(bunStore)
 
 	app.Get("/", func(c *fiber.Ctx) error {
 		return c.JSON(fiber.Map{
@@ -63,6 +66,15 @@ func main() {
 	protected.Get("/me", authHandler.Me)
 	protected.Get("/dashboard/summary", dashboardHandler.Summary)
 	protected.Get("/transactions", transactionHandler.List)
+
+	analyst := protected.Group("/analyst", middleware.RequireRole(models.UserRoleAnalyst, models.UserRoleAdmin))
+	analyst.Get("/overview", analystHandler.Overview)
+
+	admin := protected.Group("/admin", middleware.RequireRole(models.UserRoleAdmin))
+	admin.Get("/transactions", adminHandler.ListTransactions)
+	admin.Post("/transactions", adminHandler.CreateTransaction)
+	admin.Patch("/transactions/:transactionID", adminHandler.UpdateTransaction)
+	admin.Delete("/transactions/:transactionID", adminHandler.DeleteTransaction)
 
 	log.Fatal(app.Listen(":" + cfg.Port))
 }

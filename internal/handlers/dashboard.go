@@ -35,6 +35,7 @@ func (h *DashboardHandler) Summary(c *fiber.Ctx) error {
 
 	return c.JSON(fiber.Map{
 		"user":    user,
+		"role":    user.Role,
 		"summary": summary.BuildDashboardSummary(transactions),
 	})
 }

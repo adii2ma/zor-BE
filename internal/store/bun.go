@@ -14,9 +14,10 @@ import (
 )
 
 var (
-	ErrSessionNotFound = errors.New("session not found")
-	ErrSessionExpired  = errors.New("session expired")
-	ErrUserNotFound    = errors.New("user not found")
+	ErrSessionNotFound     = errors.New("session not found")
+	ErrSessionExpired      = errors.New("session expired")
+	ErrUserNotFound        = errors.New("user not found")
+	ErrTransactionNotFound = errors.New("transaction not found")
 )
 
 type BunStore struct {
