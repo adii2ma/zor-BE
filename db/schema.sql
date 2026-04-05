@@ -1,6 +1,7 @@
 CREATE TABLE IF NOT EXISTS users (
     id TEXT PRIMARY KEY,
     provider TEXT NOT NULL,
+    role TEXT NOT NULL DEFAULT 'viewer' CHECK (role IN ('viewer', 'analyst', 'admin')),
     google_subject TEXT NOT NULL UNIQUE,
     email TEXT NOT NULL UNIQUE,
     email_verified BOOLEAN NOT NULL DEFAULT FALSE,
@@ -46,6 +47,7 @@ CREATE TABLE IF NOT EXISTS transactions (
 
 CREATE INDEX IF NOT EXISTS idx_sessions_user_id ON sessions(user_id);
 CREATE INDEX IF NOT EXISTS idx_sessions_token ON sessions(token);
+CREATE INDEX IF NOT EXISTS idx_users_role ON users(role);
 CREATE INDEX IF NOT EXISTS idx_transactions_user_id ON transactions(user_id);
 CREATE INDEX IF NOT EXISTS idx_transactions_date ON transactions(transaction_date);
 CREATE INDEX IF NOT EXISTS idx_transactions_category ON transactions(category);
