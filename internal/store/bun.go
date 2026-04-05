@@ -69,7 +69,7 @@ func (s *BunStore) UpsertGoogleUser(
 				"updated_at",
 				"last_login_at",
 			).
-				Exec(ctx); err != nil {
+			Exec(ctx); err != nil {
 			return models.User{}, false, err
 		}
 
@@ -172,6 +172,27 @@ func (s *BunStore) ValidateSession(
 	}
 
 	return sessionRecord.ToSession(), userRecord.ToUser(), nil
+}
+
+func (s *BunStore) ListTransactionsByUser(
+	ctx context.Context,
+	userID string,
+) ([]models.Transaction, error) {
+	var records []models.TransactionRecord
+	if err := s.db.NewSelect().
+		Model(&records).
+		Where("user_id = ?", userID).
+		OrderExpr("transaction_date DESC, created_at DESC").
+		Scan(ctx); err != nil {
+		return nil, err
+	}
+
+	transactions := make([]models.Transaction, 0, len(records))
+	for _, record := range records {
+		transactions = append(transactions, record.ToTransaction())
+	}
+
+	return transactions, nil
 }
 
 func generateToken() (string, error) {

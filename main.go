@@ -45,6 +45,8 @@ func main() {
 	bunStore := store.NewBunStore(db, cfg.SessionTTL)
 	verifier := googleauth.NewVerifier(cfg.GoogleClientID)
 	authHandler := handlers.NewAuthHandler(verifier, bunStore)
+	dashboardHandler := handlers.NewDashboardHandler(bunStore)
+	transactionHandler := handlers.NewTransactionHandler(bunStore)
 
 	app.Get("/", func(c *fiber.Ctx) error {
 		return c.JSON(fiber.Map{
@@ -59,6 +61,8 @@ func main() {
 
 	protected := api.Group("", middleware.RequireAuth(bunStore))
 	protected.Get("/me", authHandler.Me)
+	protected.Get("/dashboard/summary", dashboardHandler.Summary)
+	protected.Get("/transactions", transactionHandler.List)
 
 	log.Fatal(app.Listen(":" + cfg.Port))
 }
